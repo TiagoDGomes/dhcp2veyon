@@ -3,26 +3,33 @@ import json
 import ipaddress
 import requests
 import os
+import argparse
 
-def fetch_file(source):
+AGGREGATED_BY_IP = 0
+AGGREGATED_BY_MAC = 1
+
+def parse_dhcp_leases(file_paths, network_filter=None):
     """
-    Fetches the dhcpd.leases file either from a local path or a URL.
+    Parses one or multiple DHCP lease files and aggregates data.
 
-    :param source: Path to the local file or URL
-    :return: Content of the file as a string
+    :param file_paths: List of paths to dhcpd.leases files.
+    :return: Dictionary containing lease data.
     """
-    if source.startswith("http://") or source.startswith("https://"):
-         
-        response = requests.get(source)
-        response.raise_for_status()  # Raise error if request fails
-        return response.text
-    elif os.path.exists(source):
-        with open(source, "r") as file:
-            return file.read()
-    else:
-        raise FileNotFoundError(f"Source '{source}' is not a valid file or URL.")
+    leases_data = {"hosts_mac": {}, "hosts_ip": {}}
+    for file_path in file_paths:
+        if file_path.startswith("http://") or file_path.startswith("https://"):         
+            response = requests.get(file_path)
+            response.raise_for_status()  # Raise error if request fails
+            content = response.text
+        elif os.path.exists(file_path):
+            with open(file_path, "r") as file:
+                content = file.read()        
+        else:
+            raise FileNotFoundError(f"Source '{file_path}' is not a valid file or URL.")
+        leases_data = merge_dhcp_data(leases_data, parse_lease_content(content, network_filter))
+    return leases_data
 
-def parse_dhcp_leases(file_path, network_filter=None):
+def parse_lease_content(content, network_filter=None):
     """
     Reads and parses the dhcpd.leases file, returning a structured dictionary.
     Can optionally filter by a specific network in CIDR format (e.g., "192.168.1.0/24").
@@ -50,9 +57,6 @@ def parse_dhcp_leases(file_path, network_filter=None):
         "cltt": re.compile(r'cltt\s+\d+\s+([\d/]+ [\d:]+);', re.IGNORECASE),
         "ends": re.compile(r'ends\s+\d+\s+([\d/]+ [\d:]+);', re.IGNORECASE)
     }
-
-
-    content = fetch_file(file_path)
 
     matches = list(lease_pattern.finditer(content))
 
@@ -87,7 +91,7 @@ def parse_dhcp_leases(file_path, network_filter=None):
 
     return {"hosts_mac": hosts_mac, "hosts_ip": hosts_ip}
 
-def parse_dhcp_leases_json(file_path, network_filter=None, indent=3):
+def parse_lease_content_json(file_path, network_filter=None, indent=3):
     """
     Reads the dhcpd.leases file and returns formatted JSON output.
     Can optionally filter by a specific network in CIDR format.
@@ -99,11 +103,51 @@ def parse_dhcp_leases_json(file_path, network_filter=None, indent=3):
     """
     return json.dumps(parse_dhcp_leases(file_path, network_filter), indent=indent)
 
+
+def merge_dhcp_data(existing_data, new_data):
+    """
+    Merges new DHCP lease data into an existing dataset, prioritizing active leases.
+
+    :param existing_data: Current aggregated lease data.
+    :param new_data: New lease data to be merged.
+    :return: Merged lease dataset.
+    """
+    for ip, new_lease in new_data["hosts_ip"].items():
+        if ip not in existing_data["hosts_ip"] or is_newer_lease(existing_data["hosts_ip"][ip], new_lease):
+            existing_data["hosts_ip"][ip] = new_lease
+    existing_data['hosts_mac'] = existing_data['hosts_mac'] | new_data['hosts_mac']
+    return existing_data
+
+def is_newer_lease(existing_lease, new_lease):
+    """
+    Determines if the new lease is more recent than the existing lease.
+
+    :param existing_lease: Existing lease data.
+    :param new_lease: New lease data.
+    :return: True if the new lease is newer, False otherwise.
+    """
+    try:
+        existing_time = datetime.strptime(existing_lease["ends"], "%Y/%m/%d %H:%M:%S")
+        new_time = datetime.strptime(new_lease["ends"], "%Y/%m/%d %H:%M:%S")
+        return new_time > existing_time
+    except ValueError:
+        return False  # If parsing fails, assume the existing lease is newer
+
+
+
+def parse_arguments():
+    """
+    Parses command-line arguments for the script.
+    """
+    parser = argparse.ArgumentParser(description="Convert DHCP leases to JSON.")
+    parser.add_argument("-f", "--file", action="append", required=True, help="Path to the dhcpd.leases file or URL")
+    parser.add_argument("-n", "--network", required=False, help="Network address in CIDR format (e.g., 192.168.1.0/24)")
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) not in [2, 3]:
-        print("Usage: python dhcp_parser.py <path_to_dhcpd.leases> [network_filter]")
-    else:
-        file_path = sys.argv[1]
-        network_filter = sys.argv[2] if len(sys.argv) == 3 else None
-        print(parse_dhcp_leases_json(file_path, network_filter))
+    args = parse_arguments()
+    try:
+        print(parse_lease_content_json(args.file, args.network))
+    except ValueError as e:
+        print(f"Error: {e}")

@@ -65,7 +65,7 @@ def convert_to_veyon(dhcp_data, room_networks, room_names, filter_ip=None, all_r
     Converts parsed DHCP lease data into the Veyon JSON configuration format.
     Filters data by room network addresses (CIDR), and optionally by IP address.
 
-    :param dhcp_data: Dictionary obtained from dhcp_parser.parse_dhcp_leases()
+    :param dhcp_data: Dictionary obtained from dhcp_parser.parse_lease_content()
     :param room_networks: List of network addresses in CIDR format (e.g., "192.168.1.0/24")
     :param room_names: List of room names assigned to networks
     :param filter_ip: IP address to filter (optional)
@@ -141,7 +141,7 @@ def parse_arguments():
     Parses command-line arguments for the script.
     """
     parser = argparse.ArgumentParser(description="Convert DHCP leases to Veyon JSON configuration.")
-    parser.add_argument("-f", "--file", required=True, help="Path to the dhcpd.leases file or URL")
+    parser.add_argument("-f", "--file", action="append", required=True, help="Path to the dhcpd.leases file or URL")
     parser.add_argument("-n", "--network", action="append", required=True, help="Network address in CIDR format (e.g., 192.168.1.0/24)")
     parser.add_argument("-r", "--room", action="append", required=True, help="Name of the room corresponding to the network")
     parser.add_argument("-a", "--address", help="Filter the configuration by a specific IP address")
