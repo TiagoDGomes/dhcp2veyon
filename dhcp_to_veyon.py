@@ -93,7 +93,7 @@ def convert_to_veyon(dhcp_data, room_networks, room_names, filter_ip=None, all_r
             last_valid_host = None
             for info in infos:      
                 # Recent lease only             
-                if not last_valid_host or dhcp_parser.is_newer_lease(last_valid_info, info):
+                if not last_valid_info or dhcp_parser.is_newer_lease(last_valid_info, info):
                     last_valid_info = info 
                                    
             ip = last_valid_info['ip']
