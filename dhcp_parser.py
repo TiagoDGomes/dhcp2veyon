@@ -4,9 +4,8 @@ import ipaddress
 import requests
 import os
 import argparse
+from datetime import datetime
 
-AGGREGATED_BY_IP = 0
-AGGREGATED_BY_MAC = 1
 
 def parse_dhcp_leases(file_paths, network_filter=None):
     """
@@ -91,18 +90,17 @@ def parse_lease_content(content, network_filter=None):
 
     return {"hosts_mac": hosts_mac, "hosts_ip": hosts_ip}
 
-def parse_lease_content_json(file_path, network_filter=None, indent=3):
+def parse_lease_content_json(file_paths, network_filter=None, indent=3):
     """
-    Reads the dhcpd.leases file and returns formatted JSON output.
+    Reads multiple dhcpd.leases files and returns formatted JSON output.
     Can optionally filter by a specific network in CIDR format.
 
-    :param file_path: Path to the dhcpd.leases file
+    :param file_paths: List of paths to dhcpd.leases files
     :param network_filter: Network in CIDR format to filter results (optional)
     :param indent: JSON indentation level (default: 3)
     :return: Formatted JSON string
     """
-    return json.dumps(parse_dhcp_leases(file_path, network_filter), indent=indent)
-
+    return json.dumps(parse_dhcp_leases(file_paths, network_filter), indent=indent)
 
 def merge_dhcp_data(existing_data, new_data):
     """
@@ -133,8 +131,6 @@ def is_newer_lease(existing_lease, new_lease):
     except ValueError:
         return False  # If parsing fails, assume the existing lease is newer
 
-
-
 def parse_arguments():
     """
     Parses command-line arguments for the script.
@@ -143,7 +139,6 @@ def parse_arguments():
     parser.add_argument("-f", "--file", action="append", required=True, help="Path to the dhcpd.leases file or URL")
     parser.add_argument("-n", "--network", required=False, help="Network address in CIDR format (e.g., 192.168.1.0/24)")
     return parser.parse_args()
-
 
 if __name__ == "__main__":
     args = parse_arguments()
