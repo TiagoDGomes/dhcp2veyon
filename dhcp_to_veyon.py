@@ -2,6 +2,8 @@ import json
 import dhcp_parser
 import uuid
 import hashlib
+import ipaddress
+import argparse
 
 def generate_deterministic_uid(name):
     """
@@ -13,37 +15,46 @@ def generate_deterministic_uid(name):
     hash_value = hashlib.md5(name.encode()).hexdigest()  # Gera um hash MD5
     return str(uuid.UUID(hash_value[:32]))  # Converte para UUID válido
 
-def convert_to_veyon(dhcp_data, room_name="Default room"):
+def convert_to_veyon(dhcp_data, room_networks, room_names):
     """
     Converts parsed DHCP lease data into the Veyon JSON configuration format.
+    Filters data by room network addresses (CIDR).
 
     :param dhcp_data: Dictionary obtained from dhcp_parser.parse_dhcp_leases()
-    :param room_name: Name of the room group (default: "Default room")
+    :param room_networks: List of network addresses in CIDR format (e.g., "192.168.1.0/24")
+    :param room_names: List of room names to be assigned to networks
     :return: Dictionary formatted for Veyon
     """
     network_objects = []
 
-    # Generate a stable room UID based on the room name
-    room_uid = generate_deterministic_uid(room_name)
+    # Verifica se o número de redes e salas é o mesmo
+    if len(room_networks) != len(room_names):
+        raise ValueError("The number of room networks must match the number of room names.")
 
-    # Create the room (group) entry
-    network_objects.append({
-        "Uid": f"{{{room_uid}}}",
-        "Type": 2,
-        "Name": room_name,
-        "glid": 1
-    })
+    # Create individual room (group) entries and filter based on room networks
+    for room_network, room_name in zip(room_networks, room_names):
+        network = ipaddress.ip_network(room_network, strict=False)
+        room_uid = generate_deterministic_uid(room_name)
 
-    # Create individual machine entries
-    for ip, info in dhcp_data["hosts_ip"].items():
+        # Create the room (group) entry
         network_objects.append({
-            "Name": info["hostname"],
-            "HostAddress": ip,
-            "MacAddress": info["mac"] if info["mac"] else "",
-            "ParentUid": f"{{{room_uid}}}",
-            "Uid": f"{{{generate_deterministic_uid(ip)}}}",  # UID fixo baseado no IP
-            "Type": 3
+            "Uid": f"{{{room_uid}}}",
+            "Type": 2,
+            "Name": room_name,
+            "glid": 1
         })
+
+        # Create individual machine entries within the current network range
+        for ip, info in dhcp_data["hosts_ip"].items():
+            if ipaddress.ip_address(ip) in network:  # Verifica se o IP pertence à rede
+                network_objects.append({
+                    "Name": info["hostname"],
+                    "HostAddress": ip,
+                    "MacAddress": info["mac"] if info["mac"] else "",
+                    "ParentUid": f"{{{room_uid}}}",
+                    "Uid": f"{{{generate_deterministic_uid(ip)}}}",  # UID fixo baseado no IP
+                    "Type": 3
+                })
 
     # Final Veyon JSON structure
     veyon_config = {
@@ -56,29 +67,38 @@ def convert_to_veyon(dhcp_data, room_name="Default room"):
 
     return veyon_config
 
-def dhcp_to_veyon_json(dhcp_leases_source, network_filter=None, room_name="Default room", indent=3):
+def dhcp_to_veyon_json(dhcp_leases_source, room_networks, room_names, indent=3):
     """
-    Converts a DHCP lease file (local or from a URL) to the Veyon JSON configuration format.
+    Converts a DHCP lease file (local or from a URL) to the Veyon JSON configuration format,
+    filtering by multiple network addresses (CIDR).
 
     :param dhcp_leases_source: Path to the dhcpd.leases file or a URL
-    :param network_filter: Network in CIDR format to filter results (optional)
-    :param room_name: Name of the room group
+    :param room_networks: List of network addresses in CIDR format to filter results
+    :param room_names: List of room names corresponding to the networks
     :param indent: JSON indentation level (default: 3)
     :return: Formatted JSON string
     """
-    dhcp_data = dhcp_parser.parse_dhcp_leases(dhcp_leases_source, network_filter)
-    veyon_config = convert_to_veyon(dhcp_data, room_name)
+    dhcp_data = dhcp_parser.parse_dhcp_leases(dhcp_leases_source)
+    veyon_config = convert_to_veyon(dhcp_data, room_networks, room_names)
     return json.dumps(veyon_config, indent=indent)
 
+def parse_arguments():
+    """
+    Parse command-line arguments for the script.
+    """
+    parser = argparse.ArgumentParser(description="Convert DHCP leases to Veyon JSON configuration.")
+    parser.add_argument("-f", "--file", required=True, help="Path to the dhcpd.leases file or URL")
+    parser.add_argument("-n", "--network", action="append", required=True, help="Network address in CIDR format (e.g., 192.168.1.0/24)")
+    parser.add_argument("-r", "--room", action="append", required=True, help="Name of the room corresponding to the network")
+    
+    args = parser.parse_args()
+    return args
+
 if __name__ == "__main__":
-    import sys
+    args = parse_arguments()
 
-    if len(sys.argv) not in [2, 3, 4]:
-        print("Usage: python dhcp_to_veyon.py <path_to_dhcpd.leases_or_url> [network_filter] [room_name]")
-    else:
-        leases_source = sys.argv[1]
-        network_filter = sys.argv[2] if len(sys.argv) > 2 else None
-        room_name = sys.argv[3] if len(sys.argv) > 3 else "Default room"
-
-        veyon_json = dhcp_to_veyon_json(leases_source, network_filter, room_name)
+    try:
+        veyon_json = dhcp_to_veyon_json(args.file, args.network, args.room)
         print(veyon_json)
+    except ValueError as e:
+        print(f"Error: {e}")
