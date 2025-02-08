@@ -90,16 +90,24 @@ def convert_to_veyon(dhcp_data, room_networks, room_names, filter_ip=None, all_r
         })
 
         # Process hosts within each room
-        for ip, info in dhcp_data["hosts_ip"].items():
+        for mac, infos in dhcp_data["hosts_mac"].items():
+            last_valid_host = None
+            for info in infos:      
+                # Recent lease only             
+                if not last_valid_host or dhcp_parser.is_newer_lease(last_valid_info, info):
+                    last_valid_info = info 
+                                   
+            ip = last_valid_info['ip']
+
             # Ignore same host (infinite screen)
             if filter_ip and ipaddress.ip_address(ip) == ipaddress.ip_address(filter_ip):
                 continue
 
             if ipaddress.ip_address(ip) in ipaddress.ip_network(room_network, strict=False):
                 network_objects.append({
-                    "Name": info["hostname"],
+                    "Name": last_valid_info["hostname"],
                     "HostAddress": ip,
-                    "MacAddress": info["mac"] if info["mac"] else "",
+                    "MacAddress": last_valid_info["mac"] if last_valid_info["mac"] else "",
                     "ParentUid": f"{{{room_uid}}}",
                     "Uid": f"{{{generate_deterministic_uid(ip)}}}",
                     "Type": 3
