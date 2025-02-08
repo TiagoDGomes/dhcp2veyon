@@ -8,38 +8,57 @@ from datetime import datetime
 
 def generate_deterministic_uid(name):
     """
-    Generate a deterministic UUID based on a given name.
+    Generates a deterministic UUID based on a given name.
 
     :param name: String to be hashed (e.g., IP or Room Name)
     :return: UUIDv4-like string
     """
-    hash_value = hashlib.md5(name.encode()).hexdigest()  # Gera um hash MD5
-    return str(uuid.UUID(hash_value[:32]))  # Converte para UUID válido
+    hash_value = hashlib.md5(name.encode()).hexdigest()
+    return str(uuid.UUID(hash_value[:32]))
 
 def is_host_active(ends):
     """
-    Verifica se o host está ativo com base no tempo de término da concessão (ends).
-    
-    :param ends: Data de término da concessão no formato 'YYYY/MM/DD HH:MM:SS'
-    :return: True se o host estiver ativo, False caso contrário.
+    Checks if a host is active based on the lease expiration time (ends).
+
+    :param ends: Lease expiration date in 'YYYY/MM/DD HH:MM:SS' format
+    :return: True if the host is active, False otherwise.
     """
-    # Converte a data de ends para datetime
-    ends_date = datetime.strptime(ends, "%Y/%m/%d %H:%M:%S")
-    current_date = datetime.now()
-    
-    # Compara se a data atual é posterior ao ends
-    return current_date < ends_date
+    try:
+        return datetime.now() < datetime.strptime(ends, "%Y/%m/%d %H:%M:%S")
+    except ValueError:
+        return False  # If parsing fails, assume the host is inactive.
 
 def veyon_config_return(network_objects=[]):
-    # Final Veyon JSON structure
-    veyon_config = {
+    """
+    Returns the Veyon JSON configuration structure.
+
+    :param network_objects: List of network objects (rooms and hosts).
+    :return: Veyon configuration dictionary.
+    """
+    return {
         "Authentication": {"Method": 1},
         "NetworkObjectDirectory": {"Plugin": "14bacaaa-ebe5-449c-b881-5b382f952571"},
-        "BuiltinDirectory": {
-            "NetworkObjects": {"JsonStoreArray": network_objects}
-        }
+        "BuiltinDirectory": {"NetworkObjects": {"JsonStoreArray": network_objects}}
     }
-    return veyon_config
+
+def get_filtered_room_uid(room_networks, room_uid_map, filter_ip):
+    """
+    Finds the room UID and name for a given filter IP.
+
+    :param room_networks: List of network CIDRs.
+    :param room_uid_map: Dictionary mapping networks to UIDs and room names.
+    :param filter_ip: IP address to filter.
+    :return: Tuple (room_uid, room_name) if found, otherwise (None, None).
+    """
+    if not filter_ip:
+        return None, None
+    
+    ip_obj = ipaddress.ip_address(filter_ip)
+    for room_network in room_networks:
+        if ip_obj in ipaddress.ip_network(room_network, strict=False):
+            return room_uid_map[room_network]
+
+    return None, None
 
 def convert_to_veyon(dhcp_data, room_networks, room_names, filter_ip=None, all_rooms=False):
     """
@@ -48,49 +67,32 @@ def convert_to_veyon(dhcp_data, room_networks, room_names, filter_ip=None, all_r
 
     :param dhcp_data: Dictionary obtained from dhcp_parser.parse_dhcp_leases()
     :param room_networks: List of network addresses in CIDR format (e.g., "192.168.1.0/24")
-    :param room_names: List of room names to be assigned to networks
-    :param filter_ip: IP address to filter the output by (optional)
+    :param room_names: List of room names assigned to networks
+    :param filter_ip: IP address to filter (optional)
     :param all_rooms: If True, include all rooms even if the filter IP is invalid
     :return: Dictionary formatted for Veyon
     """
-    network_objects = []
-    room_uid_map = {}
-
-    # Verifica se o número de redes e salas é o mesmo
     if len(room_networks) != len(room_names):
         raise ValueError("The number of room networks must match the number of room names.")
 
-    # Create individual room (group) entries and filter based on room networks
-    for room_network, room_name in zip(room_networks, room_names):
-        network = ipaddress.ip_network(room_network, strict=False)
-        room_uid = generate_deterministic_uid(room_name)
-        room_uid_map[room_network] = room_uid, room_name
+    # Map networks to room UIDs and names
+    room_uid_map = {net: (generate_deterministic_uid(name), name) for net, name in zip(room_networks, room_names)}
 
-    # Se o filtro de IP for fornecido, encontramos a rede à qual ele pertence
-    filtered_room_uid = None
-    filtered_room_name = None
-    if filter_ip:
-        ip_obj = ipaddress.ip_address(filter_ip)
-        found_network = None
-        for room_network in room_networks:
-            network = ipaddress.ip_network(room_network, strict=False)
-            if ip_obj in network:
-                filtered_room_uid, filtered_room_name = room_uid_map[room_network]
-                found_network = room_network
-                break
-        
-        # Se o IP não pertencer a nenhuma rede e --all não foi fornecido, retorna uma estrutura vazia        
-        if not filtered_room_uid and not all_rooms:
-                return veyon_config_return()
-            
-    # Se o IP pertencer a alguma rede e --all não foi fornecido, retorna apenas a rede que pertence
+    # Find the filtered room UID (if applicable)
+    filtered_room_uid, _ = get_filtered_room_uid(room_networks, room_uid_map, filter_ip)
+
+    # If filter_ip is set but does not belong to any room and --all is not used, return an empty structure
+    if not filtered_room_uid and filter_ip and not all_rooms:
+        return veyon_config_return()
+
+    # If filter_ip belongs to a room and --all is not used, include only that room
     if filtered_room_uid and not all_rooms:
-        room_networks = [found_network,]
-        room_names = [filtered_room_name,]
+        room_networks = [room for room in room_networks if room_uid_map[room][0] == filtered_room_uid]
 
-    # Percorre em todas as redes definidas
+    network_objects = []
+
+    # Process rooms
     for room_network in room_networks:
-        network = ipaddress.ip_network(room_network, strict=False)
         room_uid, room_name = room_uid_map[room_network]
 
         network_objects.append({
@@ -100,23 +102,22 @@ def convert_to_veyon(dhcp_data, room_networks, room_names, filter_ip=None, all_r
             "glid": 1
         })
 
-        for ip, info in dhcp_data["hosts_ip"].items():            
-            if ipaddress.ip_address(ip) in network:
-                # Verifica se a data ends ainda é válida
+        # Process hosts within each room
+        for ip, info in dhcp_data["hosts_ip"].items():
+            if ipaddress.ip_address(ip) in ipaddress.ip_network(room_network, strict=False):
                 if 'ends' in info and not is_host_active(info['ends']):
-                    continue
+                    continue  # Skip expired leases
+
                 network_objects.append({
                     "Name": info["hostname"],
                     "HostAddress": ip,
                     "MacAddress": info["mac"] if info["mac"] else "",
                     "ParentUid": f"{{{room_uid}}}",
-                    "Uid": f"{{{generate_deterministic_uid(ip)}}}",  # UID fixo baseado no IP
-                    "Type": 3,
-                    "Ends": info["ends"]
+                    "Uid": f"{{{generate_deterministic_uid(ip)}}}",
+                    "Type": 3
                 })
 
     return veyon_config_return(network_objects)
-    
 
 def dhcp_to_veyon_json(dhcp_leases_source, room_networks, room_names, filter_ip=None, all_rooms=False, indent=3):
     """
@@ -137,7 +138,7 @@ def dhcp_to_veyon_json(dhcp_leases_source, room_networks, room_names, filter_ip=
 
 def parse_arguments():
     """
-    Parse command-line arguments for the script.
+    Parses command-line arguments for the script.
     """
     parser = argparse.ArgumentParser(description="Convert DHCP leases to Veyon JSON configuration.")
     parser.add_argument("-f", "--file", required=True, help="Path to the dhcpd.leases file or URL")
@@ -146,8 +147,7 @@ def parse_arguments():
     parser.add_argument("-a", "--address", help="Filter the configuration by a specific IP address")
     parser.add_argument("--all", action="store_true", help="Include all rooms even if the filter IP is invalid")
 
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 if __name__ == "__main__":
     args = parse_arguments()
