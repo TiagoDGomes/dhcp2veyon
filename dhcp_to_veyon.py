@@ -4,6 +4,7 @@ import uuid
 import hashlib
 import ipaddress
 import argparse
+from datetime import datetime
 
 def generate_deterministic_uid(name):
     """
@@ -14,6 +15,31 @@ def generate_deterministic_uid(name):
     """
     hash_value = hashlib.md5(name.encode()).hexdigest()  # Gera um hash MD5
     return str(uuid.UUID(hash_value[:32]))  # Converte para UUID válido
+
+def is_host_active(ends):
+    """
+    Verifica se o host está ativo com base no tempo de término da concessão (ends).
+    
+    :param ends: Data de término da concessão no formato 'YYYY/MM/DD HH:MM:SS'
+    :return: True se o host estiver ativo, False caso contrário.
+    """
+    # Converte a data de ends para datetime
+    ends_date = datetime.strptime(ends, "%Y/%m/%d %H:%M:%S")
+    current_date = datetime.now()
+    
+    # Compara se a data atual é posterior ao ends
+    return current_date < ends_date
+
+def veyon_config_return(network_objects=[]):
+    # Final Veyon JSON structure
+    veyon_config = {
+        "Authentication": {"Method": 1},
+        "NetworkObjectDirectory": {"Plugin": "14bacaaa-ebe5-449c-b881-5b382f952571"},
+        "BuiltinDirectory": {
+            "NetworkObjects": {"JsonStoreArray": network_objects}
+        }
+    }
+    return veyon_config
 
 def convert_to_veyon(dhcp_data, room_networks, room_names, filter_ip=None, all_rooms=False):
     """
@@ -38,87 +64,59 @@ def convert_to_veyon(dhcp_data, room_networks, room_names, filter_ip=None, all_r
     for room_network, room_name in zip(room_networks, room_names):
         network = ipaddress.ip_network(room_network, strict=False)
         room_uid = generate_deterministic_uid(room_name)
-        room_uid_map[room_network] = room_uid
+        room_uid_map[room_network] = room_uid, room_name
 
     # Se o filtro de IP for fornecido, encontramos a rede à qual ele pertence
     filtered_room_uid = None
+    filtered_room_name = None
     if filter_ip:
         ip_obj = ipaddress.ip_address(filter_ip)
         found_network = None
         for room_network in room_networks:
             network = ipaddress.ip_network(room_network, strict=False)
             if ip_obj in network:
-                filtered_room_uid = room_uid_map[room_network]
+                filtered_room_uid, filtered_room_name = room_uid_map[room_network]
                 found_network = room_network
                 break
+        
+        # Se o IP não pertencer a nenhuma rede e --all não foi fornecido, retorna uma estrutura vazia        
+        if not filtered_room_uid and not all_rooms:
+                return veyon_config_return()
+            
+    # Se o IP pertencer a alguma rede e --all não foi fornecido, retorna apenas a rede que pertence
+    if filtered_room_uid and not all_rooms:
+        room_networks = [found_network,]
+        room_names = [filtered_room_name,]
 
-        if not filtered_room_uid:
-            # Se o IP não pertencer a nenhuma rede e --all não foi fornecido, retorna uma estrutura vazia
-            if not all_rooms:
-                return {
-                    "Authentication": {"Method": 1},
-                    "NetworkObjectDirectory": {"Plugin": "14bacaaa-ebe5-449c-b881-5b382f952571"},
-                    "BuiltinDirectory": {
-                        "NetworkObjects": {"JsonStoreArray": []}  # Array vazio
-                    }
-                }
+    # Percorre em todas as redes definidas
+    for room_network in room_networks:
+        network = ipaddress.ip_network(room_network, strict=False)
+        room_uid, room_name = room_uid_map[room_network]
 
-    # Se o filtro de IP foi fornecido e encontrou a rede
-    if filtered_room_uid:
-        # Apenas incluímos hosts da rede filtrada
         network_objects.append({
-            "Uid": f"{{{filtered_room_uid}}}",
+            "Uid": f"{{{room_uid}}}",
             "Type": 2,
-            "Name": room_names[room_networks.index(found_network)],
+            "Name": room_name,
             "glid": 1
         })
 
-        for ip, info in dhcp_data["hosts_ip"].items():
-            if ipaddress.ip_address(ip) in ipaddress.ip_network(found_network, strict=False):
-                if filter_ip and ip == filter_ip:
+        for ip, info in dhcp_data["hosts_ip"].items():            
+            if ipaddress.ip_address(ip) in network:
+                # Verifica se a data ends ainda é válida
+                if 'ends' in info and not is_host_active(info['ends']):
                     continue
                 network_objects.append({
                     "Name": info["hostname"],
                     "HostAddress": ip,
                     "MacAddress": info["mac"] if info["mac"] else "",
-                    "ParentUid": f"{{{filtered_room_uid}}}",
+                    "ParentUid": f"{{{room_uid}}}",
                     "Uid": f"{{{generate_deterministic_uid(ip)}}}",  # UID fixo baseado no IP
-                    "Type": 3
+                    "Type": 3,
+                    "Ends": info["ends"]
                 })
-    else:
-        # Se não houver filtro, adiciona todas as salas
-        for room_network, room_name in zip(room_networks, room_names):
-            network = ipaddress.ip_network(room_network, strict=False)
-            room_uid = room_uid_map[room_network]
 
-            network_objects.append({
-                "Uid": f"{{{room_uid}}}",
-                "Type": 2,
-                "Name": room_name,
-                "glid": 1
-            })
-
-            for ip, info in dhcp_data["hosts_ip"].items():
-                if ipaddress.ip_address(ip) in network:
-                    network_objects.append({
-                        "Name": info["hostname"],
-                        "HostAddress": ip,
-                        "MacAddress": info["mac"] if info["mac"] else "",
-                        "ParentUid": f"{{{room_uid}}}",
-                        "Uid": f"{{{generate_deterministic_uid(ip)}}}",  # UID fixo baseado no IP
-                        "Type": 3
-                    })
-
-    # Final Veyon JSON structure
-    veyon_config = {
-        "Authentication": {"Method": 1},
-        "NetworkObjectDirectory": {"Plugin": "14bacaaa-ebe5-449c-b881-5b382f952571"},
-        "BuiltinDirectory": {
-            "NetworkObjects": {"JsonStoreArray": network_objects}
-        }
-    }
-
-    return veyon_config
+    return veyon_config_return(network_objects)
+    
 
 def dhcp_to_veyon_json(dhcp_leases_source, room_networks, room_names, filter_ip=None, all_rooms=False, indent=3):
     """
