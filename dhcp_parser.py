@@ -1,7 +1,7 @@
 import re
 import json
 import ipaddress
-import requests
+import urllib.request
 import os
 import argparse
 from datetime import datetime
@@ -16,17 +16,23 @@ def parse_dhcp_leases(file_paths, network_filters=None, active_only=False):
     :return: Dictionary containing lease data.
     """
     leases_data = {"hosts_mac": {}, "hosts_ip": {}}
+    errors = []
     for file_path in file_paths:
-        if file_path.startswith("http://") or file_path.startswith("https://"):         
-            response = requests.get(file_path)
-            response.raise_for_status()  # Raise error if request fails
-            content = response.text
+        if file_path.startswith("http://") or file_path.startswith("https://"):
+            try:
+                with urllib.request.urlopen(file_path) as response:
+                    content = response.read().decode('utf-8')             
+            except Exception as e:
+                errors.append(dict(src=file_path, message=str(e)))
+                content = ''
         elif os.path.exists(file_path):
             with open(file_path, "r") as file:
                 content = file.read()        
         else:
             raise FileNotFoundError(f"Source '{file_path}' is not a valid file or URL.")
         leases_data = merge_dhcp_data(leases_data, parse_lease_content(content, network_filters, active_only))
+    if errors:
+        leases_data['errors'] = errors
     return leases_data
 
 def is_host_active(ends):
@@ -161,5 +167,5 @@ if __name__ == "__main__":
     args = parse_arguments()
     try:
         print(parse_lease_content_json(args.file, args.network, args.active_only))
-    except ValueError as e:
-        print(f"Error: {e}")
+    except Exception as e:
+        print(json.dumps(dict(error=repr(e)), indent=3))

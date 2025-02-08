@@ -143,5 +143,5 @@ if __name__ == "__main__":
     try:
         veyon_json = dhcp_to_veyon_json(args.file, args.network, args.room, args.address, args.all)
         print(veyon_json)
-    except ValueError as e:
+    except Exception as e:
         print(json.dumps(dict(error=repr(e)), indent=3))

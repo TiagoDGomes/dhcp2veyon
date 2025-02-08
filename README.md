@@ -18,11 +18,7 @@ A ferramenta permite filtrar dados por rede e sala, e pode também ser configura
 
 ### Instalação das dependências
 
-Para instalar as dependências do sistema, execute:
-
-```bash
-pip install -r requirements.txt
-```
+Não há dependências.
 
 ### Arquivo de leases DHCP
 
