@@ -1,0 +1,9 @@
+LEASE_FILES = ["/var/lib/dhcp/dhcpd.leases"]
+
+ROOM_NETWORKS = [
+    "192.168.1.1/24",
+]
+
+ROOM_NAMES = [
+    'Room 1',
+]
