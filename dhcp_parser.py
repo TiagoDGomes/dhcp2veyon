@@ -1,6 +1,26 @@
 import re
 import json
 import ipaddress
+import requests
+import os
+
+def fetch_file(source):
+    """
+    Fetches the dhcpd.leases file either from a local path or a URL.
+
+    :param source: Path to the local file or URL
+    :return: Content of the file as a string
+    """
+    if source.startswith("http://") or source.startswith("https://"):
+         
+        response = requests.get(source)
+        response.raise_for_status()  # Raise error if request fails
+        return response.text
+    elif os.path.exists(source):
+        with open(source, "r") as file:
+            return file.read()
+    else:
+        raise FileNotFoundError(f"Source '{source}' is not a valid file or URL.")
 
 def parse_dhcp_leases(file_path, network_filter=None):
     """
@@ -31,36 +51,36 @@ def parse_dhcp_leases(file_path, network_filter=None):
         "ends": re.compile(r'ends\s+\d+\s+([\d/]+ [\d:]+);', re.IGNORECASE)
     }
 
-    with open(file_path) as f:
-        content = f.read()
 
-        matches = list(lease_pattern.finditer(content))
+    content = fetch_file(file_path)
 
-        for match in matches:
-            ip = match.group(1)
-            
-            # Skip IPs that do not belong to the specified network
-            if network and ipaddress.ip_address(ip) not in network:
-                continue
+    matches = list(lease_pattern.finditer(content))
 
-            block = match.group(2)
+    for match in matches:
+        ip = match.group(1)
+        
+        # Skip IPs that do not belong to the specified network
+        if network and ipaddress.ip_address(ip) not in network:
+            continue
 
-            # Extract data within the block
-            data = {key: regex.search(block) for key, regex in patterns.items()}
-            data = {key: (match.group(1) if match else None) for key, match in data.items()}
+        block = match.group(2)
 
-            mac = data["mac"]
-            if not data["hostname"]:
-                data["hostname"] = f"host_{mac.replace(':', '')}" if mac else "unknown"
+        # Extract data within the block
+        data = {key: regex.search(block) for key, regex in patterns.items()}
+        data = {key: (match.group(1) if match else None) for key, match in data.items()}
 
-            lease_info = {"ip": ip, **data}
+        mac = data["mac"]
+        if not data["hostname"]:
+            data["hostname"] = f"host_{mac.replace(':', '')}" if mac else "unknown"
 
-            # Store in the IP-based dictionary
-            hosts_ip[ip] = lease_info
+        lease_info = {"ip": ip, **data}
 
-            # Store in the MAC-based dictionary
-            mac_key = mac if mac else "unknown"
-            hosts_mac.setdefault(mac_key, []).append(lease_info)
+        # Store in the IP-based dictionary
+        hosts_ip[ip] = lease_info
+
+        # Store in the MAC-based dictionary
+        mac_key = mac if mac else "unknown"
+        hosts_mac.setdefault(mac_key, []).append(lease_info)
 
     # Sort results by IP (optional)
     hosts_ip = dict(sorted(hosts_ip.items(), key=lambda item: item[0]))

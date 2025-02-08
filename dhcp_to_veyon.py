@@ -56,17 +56,17 @@ def convert_to_veyon(dhcp_data, room_name="Default room"):
 
     return veyon_config
 
-def dhcp_to_veyon_json(dhcp_leases_file, network_filter=None, room_name="Default room", indent=3):
+def dhcp_to_veyon_json(dhcp_leases_source, network_filter=None, room_name="Default room", indent=3):
     """
-    Converts a DHCP lease file to the Veyon JSON configuration format.
+    Converts a DHCP lease file (local or from a URL) to the Veyon JSON configuration format.
 
-    :param dhcp_leases_file: Path to the dhcpd.leases file
+    :param dhcp_leases_source: Path to the dhcpd.leases file or a URL
     :param network_filter: Network in CIDR format to filter results (optional)
     :param room_name: Name of the room group
     :param indent: JSON indentation level (default: 3)
     :return: Formatted JSON string
     """
-    dhcp_data = dhcp_parser.parse_dhcp_leases(dhcp_leases_file, network_filter)
+    dhcp_data = dhcp_parser.parse_dhcp_leases(dhcp_leases_source, network_filter)
     veyon_config = convert_to_veyon(dhcp_data, room_name)
     return json.dumps(veyon_config, indent=indent)
 
@@ -74,11 +74,11 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) not in [2, 3, 4]:
-        print("Usage: python dhcp_to_veyon.py <path_to_dhcpd.leases> [network_filter] [room_name]")
+        print("Usage: python dhcp_to_veyon.py <path_to_dhcpd.leases_or_url> [network_filter] [room_name]")
     else:
-        leases_file = sys.argv[1]
+        leases_source = sys.argv[1]
         network_filter = sys.argv[2] if len(sys.argv) > 2 else None
         room_name = sys.argv[3] if len(sys.argv) > 3 else "Default room"
 
-        veyon_json = dhcp_to_veyon_json(leases_file, network_filter, room_name)
+        veyon_json = dhcp_to_veyon_json(leases_source, network_filter, room_name)
         print(veyon_json)

@@ -1,0 +1,34 @@
+lease 10.1.2.3 {
+  starts 5 2025/02/07 11:36:02;
+  ends 5 2025/02/14 11:36:02;
+  tstp 5 2025/02/14 11:36:02;
+  cltt 5 2025/02/07 11:36:02;
+  binding state active;
+  next binding state free;
+  rewind binding state free;
+  hardware ethernet 11:22:33:44:55:66;
+  set vendor-class-identifier = "MSFT 5.0";
+}
+lease 10.1.2.4 {
+  starts 5 2025/02/07 11:36:19;
+  ends 5 2025/02/14 11:36:19;
+  tstp 5 2025/02/14 11:36:19;
+  cltt 5 2025/02/07 11:36:19;
+  binding state active;
+  next binding state free;
+  rewind binding state free;
+  hardware ethernet 22:33:44:55:66:77;
+  set vendor-class-identifier = "MSFT 5.0";
+  client-hostname "PC-1234";
+}
+
+
+lease 10.1.2.5 {
+  starts 5 2025/02/07 11:39:47;
+  ends 5 2025/02/14 11:39:47;
+  tstp 5 2025/02/14 11:39:47;
+  cltt 5 2025/02/07 11:39:47;
+  binding state free;
+  set vendor-class-identifier = "udhcp 1.1";
+  client-hostname "PC-4567";
+}
