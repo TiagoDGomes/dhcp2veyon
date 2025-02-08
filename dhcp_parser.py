@@ -7,6 +7,14 @@ import argparse
 from datetime import datetime
 from urllib.error import URLError, HTTPError
 
+def generate_deterministic_device_id(name):
+    """
+    Generates a deterministic UUID based on a given name.
+    :param name: String to be hashed (e.g., IP or Room Name)
+    :return: UUIDv4-like string
+    """
+    hash_value = hashlib.sha256(name.encode()).hexdigest()
+    return hash_value
 
 def parse_dhcp_leases(file_paths, network_filters=None, active_only=False):
     """
@@ -135,6 +143,14 @@ def parse_lease_content(content, network_filters=None, active_only=False):
 
     return {"hosts_mac": hosts_mac, "hosts_ip": hosts_ip}
 
+def address_info(file_paths, address):
+    content = parse_dhcp_leases(file_paths=file_paths, network_filters=[f'{address}/32'])
+    return {
+        "ip": content['ip'],
+        "mac": content['mac'],
+        'device-id': generate_deterministic_device_id(content['mac']),
+        'client-hostname': content['hostname']
+    }
 
 def parse_lease_content_json(file_paths, network_filters=None, active_only=False, indent=3):
     """
