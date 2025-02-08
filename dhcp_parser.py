@@ -5,6 +5,7 @@ import urllib.request
 import os
 import argparse
 from datetime import datetime
+from urllib.error import URLError, HTTPError
 
 
 def parse_dhcp_leases(file_paths, network_filters=None, active_only=False):
@@ -17,23 +18,44 @@ def parse_dhcp_leases(file_paths, network_filters=None, active_only=False):
     """
     leases_data = {"hosts_mac": {}, "hosts_ip": {}}
     errors = []
+    
     for file_path in file_paths:
         if file_path.startswith("http://") or file_path.startswith("https://"):
             try:
-                with urllib.request.urlopen(file_path) as response:
-                    content = response.read().decode('utf-8')             
+                content = fetch_url_content(file_path)
+                leases_data = merge_dhcp_data(leases_data, parse_lease_content(content, network_filters, active_only))
             except Exception as e:
                 errors.append(dict(src=file_path, message=str(e)))
-                content = ''
         elif os.path.exists(file_path):
-            with open(file_path, "r") as file:
-                content = file.read()        
+            try:
+                with open(file_path, "r") as file:
+                    content = file.read()
+                leases_data = merge_dhcp_data(leases_data, parse_lease_content(content, network_filters, active_only))
+            except IOError as e:
+                errors.append(dict(src=file_path, message=f"File error: {str(e)}"))
         else:
-            raise FileNotFoundError(f"Source '{file_path}' is not a valid file or URL.")
-        leases_data = merge_dhcp_data(leases_data, parse_lease_content(content, network_filters, active_only))
+            errors.append(dict(src=file_path, message="Source is not a valid file or URL."))
+    
     if errors:
         leases_data['errors'] = errors
     return leases_data
+
+
+def fetch_url_content(url):
+    """
+    Fetches content from a URL with timeout and error handling.
+
+    :param url: URL to fetch
+    :return: Content of the URL
+    """
+    try:
+        with urllib.request.urlopen(url, timeout=10) as response:
+            return response.read().decode('utf-8')
+    except (URLError, HTTPError) as e:
+        raise Exception(f"Error fetching URL {url}: {e}")
+    except Exception as e:
+        raise Exception(f"Unexpected error fetching URL {url}: {e}")
+
 
 def is_host_active(ends):
     """
@@ -46,6 +68,7 @@ def is_host_active(ends):
         return datetime.now() < datetime.strptime(ends, "%Y/%m/%d %H:%M:%S")
     except ValueError:
         return False  # If parsing fails, assume the host is inactive.
+
 
 def parse_lease_content(content, network_filters=None, active_only=False):
     """
@@ -112,6 +135,7 @@ def parse_lease_content(content, network_filters=None, active_only=False):
 
     return {"hosts_mac": hosts_mac, "hosts_ip": hosts_ip}
 
+
 def parse_lease_content_json(file_paths, network_filters=None, active_only=False, indent=3):
     """
     Reads multiple dhcpd.leases files and returns formatted JSON output.
@@ -124,6 +148,7 @@ def parse_lease_content_json(file_paths, network_filters=None, active_only=False
     """
     return json.dumps(parse_dhcp_leases(file_paths, network_filters, active_only), indent=indent)
   
+
 def merge_dhcp_data(existing_data, new_data):
     """
     Merges new DHCP lease data into an existing dataset, prioritizing active leases.
@@ -137,6 +162,7 @@ def merge_dhcp_data(existing_data, new_data):
             existing_data["hosts_ip"][ip] = new_lease
     existing_data['hosts_mac'] = existing_data['hosts_mac'] | new_data['hosts_mac']
     return existing_data
+
 
 def is_newer_lease(existing_lease, new_lease):
     """
@@ -153,6 +179,7 @@ def is_newer_lease(existing_lease, new_lease):
     except ValueError:
         return False  # If parsing fails, assume the existing lease is newer
 
+
 def parse_arguments():
     """
     Parses command-line arguments for the script.
@@ -162,6 +189,7 @@ def parse_arguments():
     parser.add_argument("-n", "--network", action="append", required=False, help="Network address in CIDR format (e.g., 192.168.1.0/24)")
     parser.add_argument("--active-only", action="store_true", required=False, help="Return only active hosts")
     return parser.parse_args()
+
 
 if __name__ == "__main__":
     args = parse_arguments()
