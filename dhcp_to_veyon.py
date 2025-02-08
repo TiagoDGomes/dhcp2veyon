@@ -27,6 +27,7 @@ def convert_to_veyon(dhcp_data, room_networks, room_names, filter_ip=None):
     :return: Dictionary formatted for Veyon
     """
     network_objects = []
+    room_uid_map = {}
 
     # Verifica se o número de redes e salas é o mesmo
     if len(room_networks) != len(room_names):
@@ -36,29 +37,63 @@ def convert_to_veyon(dhcp_data, room_networks, room_names, filter_ip=None):
     for room_network, room_name in zip(room_networks, room_names):
         network = ipaddress.ip_network(room_network, strict=False)
         room_uid = generate_deterministic_uid(room_name)
+        room_uid_map[room_network] = room_uid
 
-        # Create the room (group) entry
+    # Se o filtro de IP for fornecido, encontramos a rede à qual ele pertence
+    filtered_room_uid = None
+    if filter_ip:
+        ip_obj = ipaddress.ip_address(filter_ip)
+        for room_network in room_networks:
+            network = ipaddress.ip_network(room_network, strict=False)
+            if ip_obj in network:
+                filtered_room_uid = room_uid_map[room_network]
+                break
+
+    # Agora, criamos as entradas de rede de acordo com a rede do filtro, se fornecido
+    if filtered_room_uid:
+        # Apenas incluímos hosts da rede filtrada
         network_objects.append({
-            "Uid": f"{{{room_uid}}}",
+            "Uid": f"{{{filtered_room_uid}}}",
             "Type": 2,
-            "Name": room_name,
+            "Name": room_names[room_networks.index(room_network)],
             "glid": 1
         })
 
-        # Create individual machine entries within the current network range
         for ip, info in dhcp_data["hosts_ip"].items():
-            if ipaddress.ip_address(ip) in network:  # Verifica se o IP pertence à rede
-                # Se um IP de filtro for fornecido e for o mesmo que o IP do host, pula esse host
+            if ipaddress.ip_address(ip) in ipaddress.ip_network(room_network, strict=False):
                 if filter_ip and ip == filter_ip:
                     continue
                 network_objects.append({
                     "Name": info["hostname"],
                     "HostAddress": ip,
                     "MacAddress": info["mac"] if info["mac"] else "",
-                    "ParentUid": f"{{{room_uid}}}",
+                    "ParentUid": f"{{{filtered_room_uid}}}",
                     "Uid": f"{{{generate_deterministic_uid(ip)}}}",  # UID fixo baseado no IP
                     "Type": 3
                 })
+    else:
+        # Se não houver filtro, adiciona todas as salas
+        for room_network, room_name in zip(room_networks, room_names):
+            network = ipaddress.ip_network(room_network, strict=False)
+            room_uid = room_uid_map[room_network]
+
+            network_objects.append({
+                "Uid": f"{{{room_uid}}}",
+                "Type": 2,
+                "Name": room_name,
+                "glid": 1
+            })
+
+            for ip, info in dhcp_data["hosts_ip"].items():
+                if ipaddress.ip_address(ip) in network:
+                    network_objects.append({
+                        "Name": info["hostname"],
+                        "HostAddress": ip,
+                        "MacAddress": info["mac"] if info["mac"] else "",
+                        "ParentUid": f"{{{room_uid}}}",
+                        "Uid": f"{{{generate_deterministic_uid(ip)}}}",  # UID fixo baseado no IP
+                        "Type": 3
+                    })
 
     # Final Veyon JSON structure
     veyon_config = {
