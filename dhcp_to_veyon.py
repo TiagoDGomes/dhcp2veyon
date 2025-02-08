@@ -53,9 +53,15 @@ def convert_to_veyon(dhcp_data, room_networks, room_names, filter_ip=None, all_r
                 break
 
         if not filtered_room_uid:
-            # Se o IP não pertencer a nenhuma rede, ou se --all não foi fornecido
+            # Se o IP não pertencer a nenhuma rede e --all não foi fornecido, retorna uma estrutura vazia
             if not all_rooms:
-                return {}  # Não retorna nada se não encontrou a rede e --all não foi especificado
+                return {
+                    "Authentication": {"Method": 1},
+                    "NetworkObjectDirectory": {"Plugin": "14bacaaa-ebe5-449c-b881-5b382f952571"},
+                    "BuiltinDirectory": {
+                        "NetworkObjects": {"JsonStoreArray": []}  # Array vazio
+                    }
+                }
 
     # Se o filtro de IP foi fornecido e encontrou a rede
     if filtered_room_uid:
