@@ -4,6 +4,7 @@ import ipaddress
 import os
 import logging
 from dhcp_to_veyon import dhcp_to_veyon_json
+from dhcp_parser import address_info
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -17,24 +18,28 @@ except ImportError as ie:
     logging.error(f"Import error: {ie}")
     exit(1)
 
-class VeyonConfigHandler(BaseHTTPRequestHandler):
+class DHCPConfigHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.strip('/')
-        client_ip = self.client_address[0]
-        all_rooms = path.lower() == "all"
+        client_ip = self.client_address[0]        
         
         # Log the incoming request
         logging.info(f"Received request from {client_ip} for path {path}")
-        
-        try:
-            config = dhcp_to_veyon_json(LEASE_FILES, ROOM_NETWORKS, ROOM_NAMES, None if all_rooms else client_ip, all_rooms)
+        config = ''
+        if path.startswith("veyon"):      
+            all_rooms = path.lower() == "veyon/all"
+            try:
+                config = dhcp_to_veyon_json(LEASE_FILES, ROOM_NETWORKS, ROOM_NAMES, None if all_rooms else client_ip, all_rooms)
+                self.send_response(200)
+            except Exception as e:
+                # Log the error
+                logging.error(f"Error processing request: {str(e)}")
+                config = json.dumps({"error": f"An error occurred: {str(e)}"})
+                self.send_response(500)
+        else:
+            config = json.dumps(address_info(LEASE_FILES, '10.108.223.114'), indent=3)
             self.send_response(200)
-        except Exception as e:
-            # Log the error
-            logging.error(f"Error processing request: {str(e)}")
-            config = json.dumps({"error": f"An error occurred: {str(e)}"})
-            self.send_response(500)
-        
+
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(config.encode("utf-8"))
@@ -50,7 +55,7 @@ if __name__ == "__main__":
     server_address = ("", port)  # Listen on all available interfaces
     
     try:
-        httpd = HTTPServer(server_address, VeyonConfigHandler)
+        httpd = HTTPServer(server_address, DHCPConfigHandler)
         logging.info(f"Veyon DHCP Server running on port {port}...")
         httpd.serve_forever()
     except KeyboardInterrupt:
