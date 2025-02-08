@@ -4,7 +4,6 @@ import uuid
 import hashlib
 import ipaddress
 import argparse
-from datetime import datetime
 
 def generate_deterministic_uid(name):
     """
@@ -15,18 +14,6 @@ def generate_deterministic_uid(name):
     """
     hash_value = hashlib.md5(name.encode()).hexdigest()
     return str(uuid.UUID(hash_value[:32]))
-
-def is_host_active(ends):
-    """
-    Checks if a host is active based on the lease expiration time (ends).
-
-    :param ends: Lease expiration date in 'YYYY/MM/DD HH:MM:SS' format
-    :return: True if the host is active, False otherwise.
-    """
-    try:
-        return datetime.now() < datetime.strptime(ends, "%Y/%m/%d %H:%M:%S")
-    except ValueError:
-        return False  # If parsing fails, assume the host is inactive.
 
 def veyon_config_return(network_objects=[]):
     """
@@ -104,10 +91,11 @@ def convert_to_veyon(dhcp_data, room_networks, room_names, filter_ip=None, all_r
 
         # Process hosts within each room
         for ip, info in dhcp_data["hosts_ip"].items():
-            if ipaddress.ip_address(ip) in ipaddress.ip_network(room_network, strict=False):
-                if 'ends' in info and not is_host_active(info['ends']):
-                    continue  # Skip expired leases
+            # Ignore same host (infinite screen)
+            if filter_ip and ipaddress.ip_address(ip) == ipaddress.ip_address(filter_ip):
+                continue
 
+            if ipaddress.ip_address(ip) in ipaddress.ip_network(room_network, strict=False):
                 network_objects.append({
                     "Name": info["hostname"],
                     "HostAddress": ip,
@@ -132,7 +120,7 @@ def dhcp_to_veyon_json(dhcp_leases_source, room_networks, room_names, filter_ip=
     :param indent: JSON indentation level (default: 3)
     :return: Formatted JSON string
     """
-    dhcp_data = dhcp_parser.parse_dhcp_leases(dhcp_leases_source)
+    dhcp_data = dhcp_parser.parse_dhcp_leases(dhcp_leases_source, active_only=True)
     veyon_config = convert_to_veyon(dhcp_data, room_networks, room_names, filter_ip, all_rooms)
     return json.dumps(veyon_config, indent=indent)
 
@@ -156,4 +144,4 @@ if __name__ == "__main__":
         veyon_json = dhcp_to_veyon_json(args.file, args.network, args.room, args.address, args.all)
         print(veyon_json)
     except ValueError as e:
-        print(f"Error: {e}")
+        print(json.dumps(dict(error=repr(e)), indent=3))

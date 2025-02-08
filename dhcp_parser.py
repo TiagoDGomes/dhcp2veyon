@@ -7,7 +7,7 @@ import argparse
 from datetime import datetime
 
 
-def parse_dhcp_leases(file_paths, network_filters=None):
+def parse_dhcp_leases(file_paths, network_filters=None, active_only=False):
     """
     Parses one or multiple DHCP lease files and aggregates data.
 
@@ -26,10 +26,22 @@ def parse_dhcp_leases(file_paths, network_filters=None):
                 content = file.read()        
         else:
             raise FileNotFoundError(f"Source '{file_path}' is not a valid file or URL.")
-        leases_data = merge_dhcp_data(leases_data, parse_lease_content(content, network_filters))
+        leases_data = merge_dhcp_data(leases_data, parse_lease_content(content, network_filters, active_only))
     return leases_data
 
-def parse_lease_content(content, network_filters=None):
+def is_host_active(ends):
+    """
+    Checks if a host is active based on the lease expiration time (ends).
+
+    :param ends: Lease expiration date in 'YYYY/MM/DD HH:MM:SS' format
+    :return: True if the host is active, False otherwise.
+    """
+    try:
+        return datetime.now() < datetime.strptime(ends, "%Y/%m/%d %H:%M:%S")
+    except ValueError:
+        return False  # If parsing fails, assume the host is inactive.
+
+def parse_lease_content(content, network_filters=None, active_only=False):
     """
     Reads and parses the dhcpd.leases file, returning a structured dictionary.
     Can optionally filter by multiple networks in CIDR format.
@@ -73,6 +85,9 @@ def parse_lease_content(content, network_filters=None):
         data = {key: regex.search(block) for key, regex in patterns.items()}
         data = {key: (match.group(1) if match else None) for key, match in data.items()}
 
+        # Skip leases that are in "free" state
+        if active_only and 'ends' in data and not is_host_active(data['ends']):
+            continue  # Skip expired leases    
         mac = data["mac"]
         if not data["hostname"]:
             data["hostname"] = f"host_{mac.replace(':', '')}" if mac else "unknown"
@@ -91,7 +106,7 @@ def parse_lease_content(content, network_filters=None):
 
     return {"hosts_mac": hosts_mac, "hosts_ip": hosts_ip}
 
-def parse_lease_content_json(file_paths, network_filters=None, indent=3):
+def parse_lease_content_json(file_paths, network_filters=None, active_only=False, indent=3):
     """
     Reads multiple dhcpd.leases files and returns formatted JSON output.
     Can optionally filter by multiple networks in CIDR format.
@@ -101,7 +116,7 @@ def parse_lease_content_json(file_paths, network_filters=None, indent=3):
     :param indent: JSON indentation level (default: 3)
     :return: Formatted JSON string
     """
-    return json.dumps(parse_dhcp_leases(file_paths, network_filters), indent=indent)
+    return json.dumps(parse_dhcp_leases(file_paths, network_filters, active_only), indent=indent)
   
 def merge_dhcp_data(existing_data, new_data):
     """
@@ -139,11 +154,12 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Convert DHCP leases to JSON.")
     parser.add_argument("-f", "--file", action="append", required=True, help="Path to the dhcpd.leases file or URL")
     parser.add_argument("-n", "--network", action="append", required=False, help="Network address in CIDR format (e.g., 192.168.1.0/24)")
+    parser.add_argument("--active-only", action="store_true", required=False, help="Return only active hosts")
     return parser.parse_args()
 
 if __name__ == "__main__":
     args = parse_arguments()
     try:
-        print(parse_lease_content_json(args.file, args.network))
+        print(parse_lease_content_json(args.file, args.network, args.active_only))
     except ValueError as e:
         print(f"Error: {e}")
