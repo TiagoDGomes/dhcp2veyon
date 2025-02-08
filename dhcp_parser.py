@@ -6,6 +6,7 @@ import os
 import argparse
 from datetime import datetime
 from urllib.error import URLError, HTTPError
+import hashlib
 
 def generate_deterministic_device_id(name):
     """
