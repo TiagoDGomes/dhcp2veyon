@@ -7,11 +7,12 @@ import argparse
 from datetime import datetime
 
 
-def parse_dhcp_leases(file_paths, network_filter=None):
+def parse_dhcp_leases(file_paths, network_filters=None):
     """
     Parses one or multiple DHCP lease files and aggregates data.
 
     :param file_paths: List of paths to dhcpd.leases files.
+    :param network_filters: List of networks in CIDR format to filter results.
     :return: Dictionary containing lease data.
     """
     leases_data = {"hosts_mac": {}, "hosts_ip": {}}
@@ -25,23 +26,23 @@ def parse_dhcp_leases(file_paths, network_filter=None):
                 content = file.read()        
         else:
             raise FileNotFoundError(f"Source '{file_path}' is not a valid file or URL.")
-        leases_data = merge_dhcp_data(leases_data, parse_lease_content(content, network_filter))
+        leases_data = merge_dhcp_data(leases_data, parse_lease_content(content, network_filters))
     return leases_data
 
-def parse_lease_content(content, network_filter=None):
+def parse_lease_content(content, network_filters=None):
     """
     Reads and parses the dhcpd.leases file, returning a structured dictionary.
-    Can optionally filter by a specific network in CIDR format (e.g., "192.168.1.0/24").
+    Can optionally filter by multiple networks in CIDR format.
     
-    :param file_path: Path to the dhcpd.leases file
-    :param network_filter: Network in CIDR format to filter results (optional)
+    :param content: Content of the dhcpd.leases file
+    :param network_filters: List of networks in CIDR format to filter results (optional)
     :return: Dictionary with data organized by IP and MAC
     """
     hosts_ip = {}
     hosts_mac = {}
 
-    # Validate and convert network filter to an ip_network object
-    network = ipaddress.ip_network(network_filter, strict=False) if network_filter else None
+    # Validate and convert network filters to ip_network objects
+    networks = [ipaddress.ip_network(n, strict=False) for n in network_filters] if network_filters else []
 
     # Regex to capture each "lease { ... }" block
     lease_pattern = re.compile(r'lease\s+(\d+\.\d+\.\d+\.\d+)\s*\{(.*?)}', re.MULTILINE | re.DOTALL)
@@ -62,8 +63,8 @@ def parse_lease_content(content, network_filter=None):
     for match in matches:
         ip = match.group(1)
         
-        # Skip IPs that do not belong to the specified network
-        if network and ipaddress.ip_address(ip) not in network:
+        # Skip IPs that do not belong to any specified network
+        if networks and not any(ipaddress.ip_address(ip) in net for net in networks):
             continue
 
         block = match.group(2)
@@ -90,18 +91,18 @@ def parse_lease_content(content, network_filter=None):
 
     return {"hosts_mac": hosts_mac, "hosts_ip": hosts_ip}
 
-def parse_lease_content_json(file_paths, network_filter=None, indent=3):
+def parse_lease_content_json(file_paths, network_filters=None, indent=3):
     """
     Reads multiple dhcpd.leases files and returns formatted JSON output.
-    Can optionally filter by a specific network in CIDR format.
+    Can optionally filter by multiple networks in CIDR format.
 
     :param file_paths: List of paths to dhcpd.leases files
-    :param network_filter: Network in CIDR format to filter results (optional)
+    :param network_filters: List of networks in CIDR format to filter results (optional)
     :param indent: JSON indentation level (default: 3)
     :return: Formatted JSON string
     """
-    return json.dumps(parse_dhcp_leases(file_paths, network_filter), indent=indent)
-
+    return json.dumps(parse_dhcp_leases(file_paths, network_filters), indent=indent)
+  
 def merge_dhcp_data(existing_data, new_data):
     """
     Merges new DHCP lease data into an existing dataset, prioritizing active leases.
@@ -137,7 +138,7 @@ def parse_arguments():
     """
     parser = argparse.ArgumentParser(description="Convert DHCP leases to JSON.")
     parser.add_argument("-f", "--file", action="append", required=True, help="Path to the dhcpd.leases file or URL")
-    parser.add_argument("-n", "--network", required=False, help="Network address in CIDR format (e.g., 192.168.1.0/24)")
+    parser.add_argument("-n", "--network", action="append", required=False, help="Network address in CIDR format (e.g., 192.168.1.0/24)")
     return parser.parse_args()
 
 if __name__ == "__main__":
