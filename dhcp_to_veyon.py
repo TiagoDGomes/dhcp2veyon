@@ -23,7 +23,6 @@ def veyon_config_return(network_objects=[]):
     :return: Veyon configuration dictionary.
     """
     return {
-        "Authentication": {"Method": 1},
         "NetworkObjectDirectory": {"Plugin": "14bacaaa-ebe5-449c-b881-5b382f952571"},
         "BuiltinDirectory": {"NetworkObjects": {"JsonStoreArray": network_objects}}
     }
