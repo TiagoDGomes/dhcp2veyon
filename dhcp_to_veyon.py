@@ -4,11 +4,14 @@ import uuid
 import hashlib
 import ipaddress
 import argparse
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def generate_deterministic_uid(name):
     """
     Generates a deterministic UUID based on a given name.
-
     :param name: String to be hashed (e.g., IP or Room Name)
     :return: UUIDv4-like string
     """
@@ -18,7 +21,6 @@ def generate_deterministic_uid(name):
 def veyon_config_return(network_objects=[]):
     """
     Returns the Veyon JSON configuration structure.
-
     :param network_objects: List of network objects (rooms and hosts).
     :return: Veyon configuration dictionary.
     """
@@ -30,7 +32,6 @@ def veyon_config_return(network_objects=[]):
 def get_filtered_room_uid(room_networks, room_uid_map, filter_ip):
     """
     Finds the room UID and name for a given filter IP.
-
     :param room_networks: List of network CIDRs.
     :param room_uid_map: Dictionary mapping networks to UIDs and room names.
     :param filter_ip: IP address to filter.
@@ -49,8 +50,6 @@ def get_filtered_room_uid(room_networks, room_uid_map, filter_ip):
 def convert_to_veyon(dhcp_data, room_networks, room_names, filter_ip=None, all_rooms=False):
     """
     Converts parsed DHCP lease data into the Veyon JSON configuration format.
-    Filters data by room network addresses (CIDR), and optionally by IP address.
-
     :param dhcp_data: Dictionary obtained from dhcp_parser.parse_lease_content()
     :param room_networks: List of network addresses in CIDR format (e.g., "192.168.1.0/24")
     :param room_names: List of room names assigned to networks
@@ -90,12 +89,12 @@ def convert_to_veyon(dhcp_data, room_networks, room_names, filter_ip=None, all_r
 
         # Process hosts within each room
         for mac, infos in dhcp_data["hosts_mac"].items():
-            last_valid_host = None
-            for info in infos:      
-                # Recent lease only             
+            last_valid_info = None
+            for info in infos:
+                # Only consider the most recent lease
                 if not last_valid_info or dhcp_parser.is_newer_lease(last_valid_info, info):
-                    last_valid_info = info 
-                                   
+                    last_valid_info = info
+
             ip = last_valid_info['ip']
 
             # Ignore same host (infinite screen)
@@ -118,7 +117,6 @@ def dhcp_to_veyon_json(dhcp_leases_source, room_networks, room_names, filter_ip=
     """
     Converts a DHCP lease file (local or from a URL) to the Veyon JSON configuration format,
     filtering by multiple network addresses (CIDR), and optionally by a specific IP.
-
     :param dhcp_leases_source: Path to the dhcpd.leases file or a URL
     :param room_networks: List of network addresses in CIDR format to filter results
     :param room_names: List of room names corresponding to the networks
@@ -151,4 +149,5 @@ if __name__ == "__main__":
         veyon_json = dhcp_to_veyon_json(args.file, args.network, args.room, args.address, args.all)
         print(veyon_json)
     except Exception as e:
+        logging.error(f"Error: {repr(e)}")
         print(json.dumps(dict(error=repr(e)), indent=3))
