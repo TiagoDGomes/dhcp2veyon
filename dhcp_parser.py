@@ -15,7 +15,7 @@ def generate_deterministic_device_id(name):
     :return: UUIDv4-like string
     """
     hash_value = hashlib.sha256(name.encode()).hexdigest()
-    return hash_value
+    return hash_value[:32]
 
 def parse_dhcp_leases(file_paths, network_filters=None, active_only=False):
     """
@@ -144,14 +144,19 @@ def parse_lease_content(content, network_filters=None, active_only=False):
 
     return {"hosts_mac": hosts_mac, "hosts_ip": hosts_ip}
 
-def address_info(file_paths, address):
-    content = parse_dhcp_leases(file_paths=file_paths, network_filters=[f'{address}/32'])
-    return {
-        "ip": content['ip'],
-        "mac": content['mac'],
-        'device-id': generate_deterministic_device_id(content['mac']),
-        'client-hostname': content['hostname']
-    }
+def address_info(file_paths, address):    
+    try:
+        content = parse_dhcp_leases(file_paths=file_paths, network_filters=[f'{address}/32'])['hosts_ip'][address]
+        return {
+            "ip": content['ip'],
+            "mac": content['mac'],
+            'device-id': generate_deterministic_device_id(content['mac']),
+            'client-hostname': content['hostname']
+        }
+    except KeyError:
+        return {
+            "ip": address,
+        }
 
 def parse_lease_content_json(file_paths, network_filters=None, active_only=False, indent=3):
     """
