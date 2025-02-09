@@ -1,9 +1,8 @@
 LEASE_FILES = ["/var/lib/dhcp/dhcpd.leases"]
 
-ROOM_NETWORKS = [
-    "192.168.1.1/24",
+ROOMS = [
+    ("192.168.1.1/24", 'CLASSROOM 1', True),
+    ("192.168.2.1/24", 'CLASSROOM 2', True),
+    ("10.1.1.1/24", 'Admin', False),
 ]
 
-ROOM_NAMES = [
-    'Room 1',
-]
