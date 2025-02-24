@@ -24,7 +24,7 @@ Não há dependências.
 
 A entrada do sistema deve ser um arquivo de leases DHCP, que pode ser obtido diretamente de um servidor DHCP ou exportado de um sistema que o forneça. A entrada pode ser um caminho local para o arquivo ou uma URL.
 
-## Uso
+## Uso da versão CLI
 
 O script pode ser executado da seguinte forma:
 
@@ -40,7 +40,7 @@ python3 dhcp_to_veyon.py -f "<path_to_dhcpd.leases>" -n "<network1>" -n "<networ
 - `-a <ip_address>`: Filtro para um IP específico. Se fornecido, o script retornará somente a configuração da sala onde o IP está presente.
 - `--all`: Se fornecido, incluirá todas as salas, mesmo se o IP filtrado não pertencer a nenhuma rede especificada.
 
-### Exemplos de uso
+### Exemplos de uso 
 
 1. **Conversão simples de DHCP para JSON do Veyon**:
 
@@ -70,6 +70,21 @@ Isso resultará em uma configuração vazia com a estrutura do Veyon e um JsonSt
 ```bash
 python3 dhcp_to_veyon.py -f "dhcpd.leases" -n "10.1.2.0/24" -n "10.1.3.0/24" -r "Sala 2" -r "Sala 3" -a "10.1.4.200" --all
 ```
-
 Isso retornará todas as salas, incluindo "Sala 2" e "Sala 3", mesmo que o IP 10.1.4.200 não pertença a nenhuma rede.
+
+## Uso da versão Web
+### Editando os valores padrão
+- Faça uma cópia do arquivo `settings.py-example` e nomeie com `settings.py`;
+- Edite o arquivo `settings.py` de acordo com as características de sua rede.
+
+### Abrindo o servidor HTTP na porta 8080
+```bash
+VEYON_HTTP_PORT=8080 python3 http_server.py
+```
+
+### Lista de URLs a serem utlizadas:
+- `/veyon` : Retorna a configuração da sala com base no IP que acessou o recurso (utilizado para o computador do professor)
+- `/veyon/all`: Retorna a configuração de todas as salas configuradas
+
+
 
