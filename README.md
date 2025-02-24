@@ -24,6 +24,46 @@ Não há dependências.
 
 A entrada do sistema deve ser um arquivo de leases DHCP, que pode ser obtido diretamente de um servidor DHCP ou exportado de um sistema que o forneça. A entrada pode ser um caminho local para o arquivo ou uma URL.
 
+## Uso da versão HTTP
+A versão HTTP é a forma mais prática para obter a configuração do Veyon a ser implantada no computador do professor.
+
+### Editando os valores padrão
+- Faça uma cópia do arquivo `settings.py-example` e nomeie com `settings.py`;
+- Edite o arquivo `settings.py` de acordo com as características de sua rede.
+
+### Abrindo o servidor HTTP
+O código abaixo é um exemplo de como abrir o servidor HTTP na porta 80 (troque a porta se necessário):
+
+```bash
+VEYON_HTTP_PORT=80 python3 http_server.py
+```
+
+### Lista de URLs disponíveis
+
+- `/veyon` : Retorna a configuração da sala com base no IP que acessou o recurso (utilizado para o computador do professor)
+- `/veyon/all`: Retorna a configuração de todas as salas configuradas
+
+### Configurando o computador do professor
+Você precisa criar um script que, de tempos em tempos, irá fazer a atualização da configuração do Veyon.
+
+#### Em Windows
+Use o agendador de tarefas para executar como administrador o seguinte script Powershell:
+
+```powershell
+iwr http://meu-servidor/veyon -OutFile C:\WINDOWS\Temp\veyon.json
+& "C:\Program Files\Veyon\veyon-cli.exe" config import C:\WINDOWS\Temp\veyon.json
+Restart-Service -Name VeyonService
+```
+
+#### Em Linux
+Use o cron como root para executar o seguinte script bash:
+```bash
+VEYON_CONFIG_FILE="/tmp/.config.json"
+wget "http://meu-servidor/veyon" -O $VEYON_CONFIG_FILE -q
+veyon-cli config import $VEYON_CONFIG_FILE
+systemctl restart veyon
+```
+
 ## Uso da versão CLI
 
 O script pode ser executado da seguinte forma:
@@ -72,19 +112,6 @@ python3 dhcp_to_veyon.py -f "dhcpd.leases" -n "10.1.2.0/24" -n "10.1.3.0/24" -r 
 ```
 Isso retornará todas as salas, incluindo "Sala 2" e "Sala 3", mesmo que o IP 10.1.4.200 não pertença a nenhuma rede.
 
-## Uso da versão Web
-### Editando os valores padrão
-- Faça uma cópia do arquivo `settings.py-example` e nomeie com `settings.py`;
-- Edite o arquivo `settings.py` de acordo com as características de sua rede.
-
-### Abrindo o servidor HTTP na porta 8080
-```bash
-VEYON_HTTP_PORT=8080 python3 http_server.py
-```
-
-### Lista de URLs a serem utlizadas:
-- `/veyon` : Retorna a configuração da sala com base no IP que acessou o recurso (utilizado para o computador do professor)
-- `/veyon/all`: Retorna a configuração de todas as salas configuradas
 
 
 
