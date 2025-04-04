@@ -9,6 +9,34 @@ import logging
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Prefixos MAC mais comuns de máquinas virtuais (OUI - Organizationally Unique Identifier)
+VIRTUAL_MAC_PREFIXES = [
+    "00:05:69",  # VMware
+    "00:0C:29",  # VMware
+    "00:1C:14",  # VMware
+    "00:50:56",  # VMware
+    "08:00:27",  # VirtualBox
+    "00:15:5D",  # Hyper-V
+    "52:54:00",  # QEMU/KVM
+    "00:1C:42",  # Parallels
+    "00:03:FF",  # Microsoft Virtual PC
+    "00:0F:4B",  # Virtual Iron
+    "00:16:3E",  # Xen
+    "00:A0:B1",  # Xen
+]
+
+def is_virtual_mac(mac_address: str) -> bool:
+    """
+    Verifica se o endereço MAC pertence a uma máquina virtual.
+    """
+    # Normaliza o MAC para letras maiúsculas e separador ':'
+    mac_address = mac_address.upper().replace('-', ':')
+    for prefix in VIRTUAL_MAC_PREFIXES:
+        if mac_address.startswith(prefix):
+            return True
+    return False
+
+
 def generate_deterministic_uid(name):
     """
     Generates a deterministic UUID based on a given name.
@@ -101,11 +129,16 @@ def convert_to_veyon(dhcp_data, room_networks, room_names, filter_ip=None, all_r
             if filter_ip and ipaddress.ip_address(ip) == ipaddress.ip_address(filter_ip):
                 continue
 
+            mac = last_valid_info["mac"] if last_valid_info["mac"] else ""
+            
+            if is_virtual_mac(mac):
+                continue
+
             if ipaddress.ip_address(ip) in ipaddress.ip_network(room_network, strict=False):
                 network_objects.append({
                     "Name": last_valid_info["hostname"],
                     "HostAddress": ip,
-                    "MacAddress": last_valid_info["mac"] if last_valid_info["mac"] else "",
+                    "MacAddress": mac,
                     "ParentUid": f"{{{room_uid}}}",
                     "Uid": f"{{{generate_deterministic_uid(ip)}}}",
                     "Type": 3
