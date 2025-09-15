@@ -63,7 +63,7 @@ def fetch_url_content(url, timeout=5):
             content = response.read().decode("utf-8")            
             _url_cache[url] = content            
             return content
-     except Exception as e:
+    except Exception as e:
         if url in _url_cache:
             logging.warning(f"Failed {url}: {e}. Using cache.")
             return _url_cache[url]
