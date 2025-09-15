@@ -1,116 +1,116 @@
 # dhcp2veyon
 
-Este sistema tem como objetivo converter dados de leases DHCP para um formato JSON compatível com a configuração do Veyon. 
-A ferramenta permite filtrar dados por rede e sala, e pode também ser configurada para exibir apenas a sala à qual um IP específico pertence.
+This system aims to convert DHCP lease data into a JSON format compatible with Veyon configuration.
+The tool allows filtering data by network and room, and it can also be configured to display only the room to which a specific IP belongs.
 
-## Funcionalidades
+## Features
 
-- **Conversão de arquivos de leases DHCP para o formato JSON do Veyon**: A partir de um arquivo de leases DHCP, o sistema gera um arquivo JSON no formato esperado pelo Veyon.
-- **Filtragem por rede (CIDR)**: É possível especificar uma ou mais redes em CIDR (por exemplo, `192.168.1.0/24`) para filtrar as máquinas e salas que serão incluídas na configuração.
-- **Filtragem por endereço IP**: Com a opção `-a`, é possível filtrar os resultados para incluir apenas a sala onde o IP fornecido está presente.
-- **Exclusão de outras salas**: Quando a opção `-a` é utilizada, o sistema garante que apenas os hosts da sala associada ao IP fornecido sejam exibidos, excluindo as demais salas.
-- **Retorno vazio em caso de IP inválido**: Quando um IP fornecido não pertence a nenhuma rede e a opção `--all` não está ativa, o sistema retorna uma configuração vazia, mantendo a estrutura do JSON Veyon com o campo `JsonStoreArray` vazio.
+- **Conversion of DHCP lease files to Veyon JSON format**: From a DHCP lease file, the system generates a JSON file in the format expected by Veyon.
+- **Filtering by network (CIDR)**: You can specify one or more CIDR networks (e.g., `192.168.1.0/24`) to filter the machines and rooms to be included in the configuration.
+- **Filtering by IP address**: With the `-a` option, you can filter results to include only the room where the provided IP is located.
+- **Excluding other rooms**: When the `-a` option is used, the system ensures that only the hosts in the room associated with the provided IP are displayed, excluding all other rooms.
+- **Empty return in case of invalid IP**: When a provided IP does not belong to any network and the --all option is not active, the system returns an empty configuration while preserving the Veyon JSON structure with an empty JsonStoreArray field.
 
-## Instalação
+## Installation
 
-### Requisitos
-- Python 3.6 ou superior
+### Requirements
+- Python 3.6 or higher
 
-### Instalação das dependências
+### Dependency installation
 
-Não há dependências.
+There are no dependencies.
 
-### Arquivo de leases DHCP
+### DHCP lease file
 
-A entrada do sistema deve ser um arquivo de leases DHCP, que pode ser obtido diretamente de um servidor DHCP ou exportado de um sistema que o forneça. A entrada pode ser um caminho local para o arquivo ou uma URL.
+The system input must be a DHCP lease file, which can be obtained directly from a DHCP server or exported from a system that provides it. The input can be either a local file path or a URL.
 
-## Uso da versão HTTP
-A versão HTTP é a forma mais prática para obter a configuração do Veyon a ser implantada no computador do professor.
+## Using the HTTP version
+The HTTP version is the most practical way to obtain the Veyon configuration to be deployed on the teacher’s computer.
 
-### Editando os valores padrão
-- Faça uma cópia do arquivo `settings.py-example` e nomeie com `settings.py`;
-- Edite o arquivo `settings.py` de acordo com as características de sua rede.
+### Editing default values
+- Make a copy of the `settings.py-example` file and rename it to `settings.py`;
+- Edit the `settings.py` file according to your network characteristics.
 
-### Abrindo o servidor HTTP
-O código abaixo é um exemplo de como abrir o servidor HTTP na porta 80 (troque a porta se necessário):
+### Starting the HTTP server
+The following code shows an example of how to start the HTTP server on port 80 (replace the port if needed):
 
 ```bash
 VEYON_HTTP_PORT=80 python3 http_server.py
 ```
 
-### Lista de URLs disponíveis
+### List of available URLs
 
-- `/veyon` : Retorna a configuração da sala com base no IP que acessou o recurso (utilizado para o computador do professor)
-- `/veyon/all`: Retorna a configuração de todas as salas configuradas
+- `/veyon`: Returns the configuration of the room based on the IP that accessed the resource (used for the teacher’s computer).
+- `/veyon/all`: Returns the configuration of all configured rooms.
 
-### Configurando o computador do professor
-Você precisa criar um script que, de tempos em tempos, irá fazer a atualização da configuração do Veyon.
+### Setting up the teacher’s computer
+You need to create a script that periodically updates the Veyon configuration.
 
-#### Em Windows
-Use o agendador de tarefas para executar como administrador o seguinte script Powershell:
+#### On Windows
+Use Task Scheduler to run the following PowerShell script as administrator:
 
 ```powershell
-iwr http://meu-servidor/veyon -OutFile C:\WINDOWS\Temp\veyon.json
+iwr http://my-server/veyon -OutFile C:\WINDOWS\Temp\veyon.json
 & "C:\Program Files\Veyon\veyon-cli.exe" config import C:\WINDOWS\Temp\veyon.json
 Restart-Service -Name VeyonService
 ```
 
-#### Em Linux
-Use o cron como root para executar o seguinte script bash:
+#### On Linux
+Use cron as root to run the following bash script:
+
 ```bash
 VEYON_CONFIG_FILE="/tmp/.config.json"
-wget "http://meu-servidor/veyon" -O $VEYON_CONFIG_FILE -q
+wget "http://my-server/veyon" -O $VEYON_CONFIG_FILE -q
 veyon-cli config import $VEYON_CONFIG_FILE
 systemctl restart veyon
 ```
 
-## Uso da versão CLI
+## Using the CLI version
 
-O script pode ser executado da seguinte forma:
+The script can be executed as follows:
 
 ```bash
 python3 dhcp_to_veyon.py -f "<path_to_dhcpd.leases>" -n "<network1>" -n "<network2>" -r "<room1>" -r "<room2>" [-a "<ip_address>"] [--all]
 ```
 
-### Parâmetros
+### Parameters
 
-- `-f <file_path>`: Caminho para o arquivo de leases DHCP ou URL contendo os dados de leases.
-- `-n <network>`: Endereço de rede em formato CIDR (exemplo: `192.168.1.0/24`). Pode ser passado múltiplas vezes para especificar várias redes.
-- `-r <room>`: Nome da sala ou grupo de máquinas. Pode ser passado múltiplas vezes para associar várias redes a diferentes salas.
-- `-a <ip_address>`: Filtro para um IP específico. Se fornecido, o script retornará somente a configuração da sala onde o IP está presente.
-- `--all`: Se fornecido, incluirá todas as salas, mesmo se o IP filtrado não pertencer a nenhuma rede especificada.
+- `-f <file_path>`: Path to the DHCP lease file or URL containing the lease data.
+- `-n <network>`: Network address in CIDR format (e.g.,`192.168.1.0/24`). Can be used multiple times to specify several networks.
+- `-r <room>`: Room or group name. Can be used multiple times to associate multiple networks with different rooms.
+- `-a <ip_address>`: Filter for a specific IP. If provided, the script will return only the configuration of the room where the IP is present.
+- `--all`: If provided, it will include all rooms, even if the filtered IP does not belong to any specified network.
 
-### Exemplos de uso 
+### Usage examples
 
-1. **Conversão simples de DHCP para JSON do Veyon**:
-
-```bash
-python3 dhcp_to_veyon.py -f "dhcpd.leases" -n "10.1.2.0/24" -n "10.1.3.0/24" -r "Sala 2" -r "Sala 3"
-```
-
-Isso gerará um arquivo JSON com as configurações para as redes 10.1.2.0/24 e 10.1.3.0/24, associadas às salas "Sala 2" e "Sala 3".
-
-2. **Filtragem por IP (retorna a sala com o IP fornecido)**:
+1. **Simple DHCP-to-Veyon JSON conversion:**:
 
 ```bash
-python3 dhcp_to_veyon.py -f "dhcpd.leases" -n "10.1.2.0/24" -n "10.1.3.0/24" -r "Sala 2" -r "Sala 3" -a "10.1.2.200"
+python3 dhcp_to_veyon.py -f "dhcpd.leases" -n "10.1.2.0/24" -n "10.1.3.0/24" -r "Room 2" -r "Room 3"
 ```
 
-Isso retornará somente as máquinas da "Sala 2", excluindo qualquer máquina associada a outras redes ou salas.
+This will generate a JSON file with configurations for the networks 10.1.2.0/24 and 10.1.3.0/24, associated with rooms "Room 2" and "Room 3".
 
-3. **Quando o IP fornecido não pertence a nenhuma rede e --all não é fornecido**:
+2. **Filtering by IP (returns the room with the provided IP)**:
 
 ```bash
-python3 dhcp_to_veyon.py -f "dhcpd.leases" -n "10.1.2.0/24" -n "10.1.3.0/24" -r "Sala 2" -r "Sala 3" -a "10.1.4.200"
+python3 dhcp_to_veyon.py -f "dhcpd.leases" -n "10.1.2.0/24" -n "10.1.3.0/24" -r "Room 2" -r "Room 3" -a "10.1.2.200"
 ```
+This will return only the machines in "Room 2", excluding any machines associated with other networks or rooms.
 
-Isso resultará em uma configuração vazia com a estrutura do Veyon e um JsonStoreArray vazio.
+3. **When the provided IP does not belong to any network and --all is not provided**:
 
-4. **Com a opção --all, incluirá todas as salas, mesmo se o IP não for encontrado em nenhuma rede**:
 ```bash
-python3 dhcp_to_veyon.py -f "dhcpd.leases" -n "10.1.2.0/24" -n "10.1.3.0/24" -r "Sala 2" -r "Sala 3" -a "10.1.4.200" --all
+python3 dhcp_to_veyon.py -f "dhcpd.leases" -n "10.1.2.0/24" -n "10.1.3.0/24" -r "Room 2" -r "Room 3" -a "10.1.4.200"
 ```
-Isso retornará todas as salas, incluindo "Sala 2" e "Sala 3", mesmo que o IP 10.1.4.200 não pertença a nenhuma rede.
+
+This will result in an empty configuration with the Veyon structure and an empty JsonStoreArray.
+
+4. **With the --all option, all rooms will be included, even if the IP is not found in any network**:
+```bash
+python3 dhcp_to_veyon.py -f "dhcpd.leases" -n "10.1.2.0/24" -n "10.1.3.0/24" -r "Room 2" -r "Room 3" -a "10.1.4.200" --all
+```
+This will return all rooms, including "Room 2" and "Room 3", even if IP 10.1.4.200 does not belong to any network.
 
 
 
