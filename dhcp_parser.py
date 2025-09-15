@@ -49,8 +49,9 @@ def parse_dhcp_leases(file_paths, network_filters=None, active_only=False):
         leases_data['errors'] = errors
     return leases_data
 
+_url_cache = {}
 
-def fetch_url_content(url):
+def fetch_url_content(url, timeout=5):
     """
     Fetches content from a URL with timeout and error handling.
 
@@ -58,12 +59,16 @@ def fetch_url_content(url):
     :return: Content of the URL
     """
     try:
-        with urllib.request.urlopen(url, timeout=10) as response:
-            return response.read().decode('utf-8')
-    except (URLError, HTTPError) as e:
-        raise Exception(f"Error fetching URL {url}: {e}")
-    except Exception as e:
-        raise Exception(f"Unexpected error fetching URL {url}: {e}")
+        with urllib.request.urlopen(url, timeout) as response:
+            content = response.read().decode("utf-8")            
+            _url_cache[url] = content            
+            return content
+     except Exception as e:
+        if url in _url_cache:
+            logging.warning(f"Failed {url}: {e}. Using cache.")
+            return _url_cache[url]
+        logging.error(f"Failed {url} and empty cache: {e}")
+        raise
 
 
 def is_host_active(ends):
